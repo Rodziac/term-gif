@@ -92,9 +92,9 @@ func cleanupVisitors() {
 
 // Search gif on api and return download url and gif id
 func searchApi(search string) (data models.Api, err error) {
-	url := fmt.Sprintf("%s/v1/search?q='%s'&key=%s&media_filter=minimal&limit=%d", c.ApiUrl, search, c.ApiKey, c.Limit)
+	reqURL := fmt.Sprintf("%s/v1/gifs/search?api_key=%s&q=%s&limit=%d&rating=pg-13", c.ApiUrl, c.ApiKey, url.QueryEscape(search), c.Limit)
 	// Search gif on api
-	res, err := http.Get(url)
+	res, err := http.Get(reqURL)
 	if err != nil {
 		log.Printf("Error while searching gif %s", err)
 		return data, err
@@ -191,7 +191,7 @@ Search and display gifs in your terminal
 		curl "gif.xyzzy.run/wow?img=true"
 
 
-Powered By Tenor
+Powered By GIPHY
 
 if you like this project, please consider sponsoring it: https://github.com/sponsors/mattLLVW
 
@@ -264,7 +264,7 @@ if you like this project, please consider sponsoring it: https://github.com/spon
 	}
 
 	// Search gif on api and return api data
-	strings.ReplaceAll(search, "_", " ")
+	search = strings.ReplaceAll(search, "_", " ")
 	apiData, err := searchApi(search)
 
 	if err != nil || len(apiData.Results) == 0 {
@@ -279,9 +279,9 @@ if you like this project, please consider sponsoring it: https://github.com/spon
 		// Must be a specific search so just return the only result
 		randNb = 0
 	}
-	gifUrl := apiData.Results[randNb].Media[0].Gif.Url
+	gifUrl := apiData.Results[randNb].Images.Original.Url
 	gifId := apiData.Results[randNb].Id
-	gifPreview := apiData.Results[randNb].Media[0].Gif.Preview
+	gifPreview := apiData.Results[randNb].Images.OriginalStill.Url
 	if preview != "" {
 		// Clear terminal and position cursor
 		fmt.Fprintf(w, "\033[2J\033[1;1H")
@@ -385,6 +385,15 @@ func main() {
 		}
 	}
 	viper.AutomaticEnv()
+	// Explicitly bind the env vars we care about. viper.AutomaticEnv() alone is
+	// not reliably applied by viper.Unmarshal, so without this a platform's
+	// dynamically-assigned $PORT (e.g. Heroku) would be ignored and the app
+	// would bind the wrong port and fail to boot.
+	_ = viper.BindEnv("host", "HOST")
+	_ = viper.BindEnv("port", "PORT")
+	_ = viper.BindEnv("apikey", "APIKEY")
+	_ = viper.BindEnv("apiurl", "APIURL")
+	_ = viper.BindEnv("limit", "LIMIT")
 	if err := viper.Unmarshal(&c); err != nil {
 		log.Fatalf("Unable to unmarshal config %s", err)
 	}

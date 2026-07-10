@@ -1,0 +1,28 @@
+{
+  "name": "term-gif",
+  "description": "Search and display gifs in your terminal. GIPHY-powered fork of mattLLVW/term-gif.",
+  "keywords": ["go", "terminal", "gif", "giphy", "curl"],
+  "stack": "container",
+  "env": {
+    "APIKEY": {
+      "description": "Your GIPHY API key. Create one for free at https://developers.giphy.com/dashboard/",
+      "required": true
+    },
+    "APIURL": {
+      "description": "GIPHY API base URL.",
+      "value": "https://api.giphy.com"
+    },
+    "HOST": {
+      "description": "Bind address inside the container.",
+      "value": "0.0.0.0"
+    },
+    "LIMIT": {
+      "description": "Number of search results to pick a random gif from.",
+      "value": "4"
+    },
+    "DBENABLED": {
+      "description": "Enable the optional MariaDB render cache. Leave false for a single-dyno deploy.",
+      "value": "false"
+    }
+  }
+}
