@@ -1,16 +1,24 @@
 {
   "name": "term-gif",
-  "description": "Search and display gifs in your terminal. GIPHY-powered fork of mattLLVW/term-gif.",
-  "keywords": ["go", "terminal", "gif", "giphy", "curl"],
+  "description": "Search and display gifs in your terminal. Multi-provider (GIPHY + KLIPY) fork of mattLLVW/term-gif.",
+  "keywords": ["go", "terminal", "gif", "giphy", "klipy", "curl"],
   "stack": "container",
   "env": {
-    "APIKEY": {
+    "GIPHYKEY": {
       "description": "Your GIPHY API key. Create one for free at https://developers.giphy.com/dashboard/",
       "required": true
     },
-    "APIURL": {
+    "GIPHYURL": {
       "description": "GIPHY API base URL.",
       "value": "https://api.giphy.com"
+    },
+    "KLIPYKEY": {
+      "description": "Your KLIPY API key. Create one for free at https://partner.klipy.com",
+      "required": true
+    },
+    "KLIPYURL": {
+      "description": "KLIPY API base URL.",
+      "value": "https://api.klipy.com"
     },
     "HOST": {
       "description": "Bind address inside the container.",

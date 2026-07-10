@@ -32,8 +32,10 @@ import (
 type config struct {
 	Host      string
 	Port      int
-	ApiKey    string
-	ApiUrl    string
+	GiphyKey  string
+	GiphyUrl  string
+	KlipyKey  string
+	KlipyUrl  string
 	Limit     int
 	DbUser    string
 	DbPass    string
@@ -90,27 +92,75 @@ func cleanupVisitors() {
 	}
 }
 
-// Search gif on api and return download url and gif id
-func searchApi(search string) (data models.Api, err error) {
-	reqURL := fmt.Sprintf("%s/v1/gifs/search?api_key=%s&q=%s&limit=%d&rating=pg-13", c.ApiUrl, c.ApiKey, url.QueryEscape(search), c.Limit)
-	// Search gif on api
+// getJSON performs a GET request and decodes the JSON body into v.
+func getJSON(reqURL string, v interface{}) error {
 	res, err := http.Get(reqURL)
 	if err != nil {
-		log.Printf("Error while searching gif %s", err)
-		return data, err
+		log.Printf("Error while requesting provider: %s", err)
+		return err
 	}
 	defer res.Body.Close()
-	// Parse json response
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		log.Printf("Error while reading body %s", err)
-		return data, err
+		log.Printf("Error while reading body: %s", err)
+		return err
 	}
-	if err := json.Unmarshal(body, &data); err != nil {
-		log.Printf("Error while unmarshalling body %s", err)
-		return data, err
+	if err := json.Unmarshal(body, v); err != nil {
+		log.Printf("Error while unmarshalling body: %s", err)
+		return err
 	}
-	return data, nil
+	return nil
+}
+
+// searchGiphy queries the GIPHY search endpoint and returns normalized results.
+func searchGiphy(search string) ([]models.GifResult, error) {
+	reqURL := fmt.Sprintf("%s/v1/gifs/search?api_key=%s&q=%s&limit=%d&rating=pg-13",
+		c.GiphyUrl, c.GiphyKey, url.QueryEscape(search), c.Limit)
+	var data models.GiphyApi
+	if err := getJSON(reqURL, &data); err != nil {
+		return nil, err
+	}
+	return data.ToResults(), nil
+}
+
+// searchKlipy queries the KLIPY search endpoint and returns normalized results.
+// KLIPY puts the API key in the path and requires per_page to be at least 8.
+func searchKlipy(search string) ([]models.GifResult, error) {
+	perPage := c.Limit
+	if perPage < 8 {
+		perPage = 8
+	}
+	reqURL := fmt.Sprintf("%s/api/v1/%s/gifs/search?q=%s&per_page=%d",
+		c.KlipyUrl, c.KlipyKey, url.QueryEscape(search), perPage)
+	var data models.KlipyApi
+	if err := getJSON(reqURL, &data); err != nil {
+		return nil, err
+	}
+	return data.ToResults(), nil
+}
+
+// pickProvider returns the requested provider ("giphy"/"klipy"), or picks one
+// at random when the parameter is missing or unrecognized.
+func pickProvider(requested string) string {
+	switch strings.ToLower(strings.TrimSpace(requested)) {
+	case "giphy":
+		return "giphy"
+	case "klipy":
+		return "klipy"
+	default:
+		if rand.Intn(2) == 0 {
+			return "giphy"
+		}
+		return "klipy"
+	}
+}
+
+// searchProvider dispatches the search to the selected provider.
+func searchProvider(provider, search string) ([]models.GifResult, error) {
+	if provider == "klipy" {
+		return searchKlipy(search)
+	}
+	return searchGiphy(search)
 }
 
 // If anything bad happen, be cute
@@ -190,8 +240,12 @@ Search and display gifs in your terminal
 
 		curl "gif.xyzzy.run/wow?img=true"
 
+	Pick a provider (giphy or klipy), or omit it for a random one, i.e:
 
-Powered By GIPHY
+		curl "gif.xyzzy.run/hello?provider=klipy"
+
+
+Powered By GIPHY & KLIPY
 
 if you like this project, please consider sponsoring it: https://github.com/sponsors/mattLLVW
 
@@ -263,25 +317,25 @@ if you like this project, please consider sponsoring it: https://github.com/spon
 		return
 	}
 
-	// Search gif on api and return api data
+	// Choose provider (query param, or random when unset), then search it.
+	provider := pickProvider(qry.Get("provider"))
 	search = strings.ReplaceAll(search, "_", " ")
-	apiData, err := searchApi(search)
+	results, err := searchProvider(provider, search)
 
-	if err != nil || len(apiData.Results) == 0 {
-		log.Println("api results len", len(apiData.Results), "err", err)
+	if err != nil || len(results) == 0 {
+		log.Println("provider", provider, "results len", len(results), "err", err)
 		sendGif(w, oopsGif())
 		return
 	}
-	// If enabled, return a random gif
-	rand.Seed(time.Now().Unix())
+	// Pick a random result from those returned.
 	randNb := rand.Intn(c.Limit)
-	if len(apiData.Results) < c.Limit {
-		// Must be a specific search so just return the only result
+	if len(results) < c.Limit {
+		// Fewer results than the limit, just use the first one.
 		randNb = 0
 	}
-	gifUrl := apiData.Results[randNb].Images.Original.Url
-	gifId := apiData.Results[randNb].Id
-	gifPreview := apiData.Results[randNb].Images.OriginalStill.Url
+	gifUrl := results[randNb].GifUrl
+	gifId := results[randNb].Id
+	gifPreview := results[randNb].PreviewUrl
 	if preview != "" {
 		// Clear terminal and position cursor
 		fmt.Fprintf(w, "\033[2J\033[1;1H")
@@ -366,6 +420,7 @@ func conditionalHandler(w http.ResponseWriter, r *http.Request) {
 
 // Run a background goroutine to remove old entries from the visitors map.
 func init() {
+	rand.Seed(time.Now().UnixNano())
 	go cleanupVisitors()
 }
 
@@ -391,8 +446,10 @@ func main() {
 	// would bind the wrong port and fail to boot.
 	_ = viper.BindEnv("host", "HOST")
 	_ = viper.BindEnv("port", "PORT")
-	_ = viper.BindEnv("apikey", "APIKEY")
-	_ = viper.BindEnv("apiurl", "APIURL")
+	_ = viper.BindEnv("giphykey", "GIPHYKEY")
+	_ = viper.BindEnv("giphyurl", "GIPHYURL")
+	_ = viper.BindEnv("klipykey", "KLIPYKEY")
+	_ = viper.BindEnv("klipyurl", "KLIPYURL")
 	_ = viper.BindEnv("limit", "LIMIT")
 	if err := viper.Unmarshal(&c); err != nil {
 		log.Fatalf("Unable to unmarshal config %s", err)
